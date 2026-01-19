@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 PKGDIR="${MESON_BUILD_ROOT}/pkg"
