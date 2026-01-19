@@ -20,7 +20,7 @@ To install into a Proton + Proton Prefix (for example, GE-Proton10-28 here):
 build/pkg/install_into_proton.sh ~/.local/share/Steam/compatibilitytools.d/GE-Proton10-28/
 ```
 
-To run with steam runtime (needs hack for libgbm problem):
+To run with steam runtime (needs hack for libgbm problem due to a [steam runtime bug](https://github.com/ValveSoftware/steam-runtime/issues/797)):
 ```bash
 WINEDEBUG=+spout2pw PROTONPATH=GE-Proton GBM_BACKENDS_PATH=/run/host/usr/lib64/gbm \
 umu-run "VTube Studio/VTube Studio.exe"
