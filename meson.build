@@ -33,15 +33,40 @@ unix_src = [
 
 windows_compiler_args = [ '-Wno-error', '-std=c99', '-mcmodel=small', '-fno-omit-frame-pointer', '-O2', '-march=nocona', '-mtune=core-avx2', '-mfpmath=sse', '-D__WINE_PE_BUILD', '-mcx16', '-fno-strict-aliasing', '-ffunction-sections']
 windows_link_args = [ '-Wno-error', '-std=c99' ]
-windows_inc = [
-  '/usr/include/wine/windows',
+
+try_windows_inc = [
+  '/usr/include/wine/',
+  '/usr/include/wine/wine/',
 ]
+
+windows_inc = []
+
+found = false
+foreach idir : try_windows_inc
+  inc_arg = '-I' + idir
+  if not found and c.has_header('debug.h', args: inc_arg)
+    windows_inc += [idir / 'windows']
+    found = true
+  endif
+endforeach
+
+if not found
+    error('Failed to find windows includes')
+endif
 
 unix_compiler_args = [ '-DWINE_UNIX_LIB' ]
 unix_inc = windows_inc
 
-wine_lib_path = '/usr/lib64/wine/x86_64-windows/'
-unix_lib_path = '/usr/lib64/wine/x86_64-unix/'
+wine_lib_path = [
+    '/usr/lib64/wine/x86_64-windows/',
+    '/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/',
+    '/usr/lib/wine/x86_64-windows/',
+]
+unix_lib_path = [
+    '/usr/lib64/wine/x86_64-unix/',
+    '/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/',
+    '/usr/lib/wine/x86_64-unix/',
+]
 
 windows_deps = [
   c.find_library('d3d11', dirs: wine_lib_path),
@@ -50,13 +75,21 @@ windows_deps = [
   spoutdxtoc_dep,
 ]
 
+vulkan = dependency('vulkan', native: true)
+
 unix_deps = [
   funnel,
   funnel_vk,
+  vulkan,
 ]
 
-unix_link_args=[
-  '-L' + unix_lib_path,
+unix_link_args=[]
+
+foreach p : unix_lib_path
+  unix_link_args += ['-L' + p]
+endforeach
+
+unix_link_args += [
   '-l:ntdll.so',
   '-Wl,--whole-archive',
   '-Wl,' + get_option('libpipewire_static_lib'),
@@ -74,11 +107,6 @@ spout2pw_bin = executable(
   win_subsystem: 'console',
 )
 
-vulkan = dependency('vulkan', native: true)
-egl = dependency('egl', native: true)
-x11 = dependency('x11', native: true)
-gl = dependency('GL', native: true)
-
 unixlib = shared_library(
   'spout2pw',
   unix_src,
@@ -86,7 +114,7 @@ unixlib = shared_library(
   name_prefix: '',
   c_args: unix_compiler_args,
   link_args: unix_link_args,
-  dependencies: [unix_deps, vulkan, gl, egl, x11],
+  dependencies: unix_deps,
   native: true,
 )
 
