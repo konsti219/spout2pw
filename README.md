@@ -24,8 +24,16 @@ This creates a package at `build/pkg`.
 On Debian: `sudo apt install meson ninja-build libdbus-1-dev libwine-dev mingw-w64 libgbm-dev libdrm-dev libvulkan-dev wine64-tools`
 
 ## Credits
+Original author:
+* hoshinolina
 
 Based on a prototype by tytan652:
 
 * https://codeberg.org/tytan652/spoutdxtoc
 * https://codeberg.org/tytan652/spout2xdp
+
+Contributors:
+* hoshinolina
+* marysaka
+* yofukashino
+* h-banii
