@@ -9,3 +9,6 @@
 [submodule "subprojects/spoutdxtoc/Spout2"]
 	path = subprojects/spoutdxtoc/Spout2
 	url = https://github.com/leadedge/Spout2
+[submodule "subprojects/spoutdxtoc"]
+	path = subprojects/spoutdxtoc
+	url = https://codeberg.org/tytan652/spoutdxtoc.git
