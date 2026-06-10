@@ -1237,3 +1237,9 @@ const unixlib_entry_t __wine_unix_call_funcs[] = {
 };
 
 C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count);
+
+const unixlib_entry_t __wine_unix_call_wow64_funcs[] = {
+    _getenv,    startup,       _teardown,      create_source,
+    run_source, update_source, destroy_source,
+};
+C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_funcs_count);
