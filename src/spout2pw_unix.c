@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <vulkan/vulkan.h>
 
 #include <funnel-vk.h>
 #include <funnel.h>
