@@ -116,10 +116,7 @@ void show_error(HRESULT res, const char *msg) {
     }
 
     char *dialog_msg = malloc(strlen(msg) + 256);
-    sprintf(dialog_msg,
-            "%s (%08lx)\n\n"
-            "Please see https://lina.yt/s2pw-error for troubleshooting steps.",
-            msg, (long)res);
+    sprintf(dialog_msg, "%s (%08lx)\n\n Please see https://lina.yt/s2pw-error for troubleshooting steps.", msg, (long)res);
 
     ERR("Error: %s\n", dialog_msg);
 
@@ -134,90 +131,57 @@ void show_error(HRESULT res, const char *msg) {
     // Hack: https://bugs.winehq.org/show_bug.cgi?id=59393
     AllocConsole();
 
-    MessageBoxA(NULL, dialog_msg, "Spout2PW error",
-                MB_OK | MB_ICONERROR | MB_SERVICE_NOTIFICATION | MB_TOPMOST);
+    MessageBoxA(NULL, dialog_msg, "Spout2PW error", MB_OK | MB_ICONERROR | MB_SERVICE_NOTIFICATION | MB_TOPMOST);
     TRACE("Message box returned\n");
 
     free(dialog_msg);
 }
 
 static HANDLE open_shared_resource(HANDLE kmt_handle) {
-    static const WCHAR shared_gpu_resourceW[] = {
-        '\\', '?', '?', '\\', 'S', 'h', 'a', 'r', 'e', 'd', 'G',
-        'p',  'u', 'R', 'e',  's', 'o', 'u', 'r', 'c', 'e', 0};
-    UNICODE_STRING shared_gpu_resource_us;
-    struct shared_resource_open *inbuff;
-    HANDLE shared_resource;
-    OBJECT_ATTRIBUTES attr;
-    IO_STATUS_BLOCK iosb;
-    NTSTATUS status;
-    DWORD in_size;
+    struct shared_resource_open inbuff;
 
-    init_unicode_string(&shared_gpu_resource_us, shared_gpu_resourceW);
+    HANDLE shared_resource = CreateFileW(L"\\\\.\\SharedGpuResource",GENERIC_READ | GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
 
-    attr.Length = sizeof(attr);
-    attr.RootDirectory = 0;
-    attr.Attributes = 0;
-    attr.ObjectName = &shared_gpu_resource_us;
-    attr.SecurityDescriptor = NULL;
-    attr.SecurityQualityOfService = NULL;
-
-    if ((status = NtCreateFile(&shared_resource, GENERIC_READ | GENERIC_WRITE,
-                               &attr, &iosb, NULL, FILE_ATTRIBUTE_NORMAL,
-                               FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN, 0,
-                               NULL, 0))) {
-        ERR("Failed to load open a shared resource handle, status %#lx.\n",
-            (long int)status);
+    if (shared_resource == INVALID_HANDLE_VALUE) {
+        ERR("Failed to open SharedGpuResource device (error %lu)\n", GetLastError());
         return INVALID_HANDLE_VALUE;
     }
+    inbuff.kmt_handle = wine_server_obj_handle(kmt_handle);
+    BOOL success = DeviceIoControl(shared_resource,IOCTL_SHARED_GPU_RESOURCE_OPEN,&inbuff, sizeof(inbuff),NULL, 0,NULL,NULL);
 
-    in_size = sizeof(*inbuff);
-    inbuff = calloc(1, in_size);
-    inbuff->kmt_handle = wine_server_obj_handle(kmt_handle);
-
-    status = NtDeviceIoControlFile(shared_resource, NULL, NULL, NULL, &iosb,
-                                   IOCTL_SHARED_GPU_RESOURCE_OPEN, inbuff,
-                                   in_size, NULL, 0);
-
-    free(inbuff);
-
-    if (status) {
-        ERR("Failed to open video resource, status %#lx.\n", (long int)status);
-        NtClose(shared_resource);
+    if (!success) {
+        ERR("DeviceIoControl(IOCTL_SHARED_GPU_RESOURCE_OPEN) failed (error %lu)\n", GetLastError());
+        ERR("kmt_handle raw value: 0x%lx\n", (long)(intptr_t)kmt_handle);
+        ERR("inbuff.kmt_handle: 0x%lx\n", (long)(intptr_t)inbuff.kmt_handle);
+        ERR("sizeof(inbuff): %zu\n", sizeof(inbuff));
+        CloseHandle(shared_resource);
         return INVALID_HANDLE_VALUE;
     }
 
     return shared_resource;
 }
 
-static NTSTATUS get_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size,
-                                    uint32_t *metadata_size) {
-    IO_STATUS_BLOCK iosb;
-
-    NTSTATUS status = NtDeviceIoControlFile(
-        handle, NULL, NULL, NULL, &iosb, IOCTL_SHARED_GPU_RESOURCE_GET_METADATA,
-        NULL, 0, buf, buf_size);
-
-    if (status != STATUS_SUCCESS) {
-        ERR("Failed to get shared metadata, status %#lx.\n", (long int)status);
-    } else if (metadata_size) {
-        *metadata_size = iosb.Information;
+static NTSTATUS get_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size, uint32_t *metadata_size) {
+    DWORD ret_size;
+    bool ret = DeviceIoControl(handle, IOCTL_SHARED_GPU_RESOURCE_GET_METADATA, NULL, 0, buf, buf_size, &ret_size, NULL);
+    if(!ret){
+        DWORD err = GetLastError();
+        ERR("Failed to get shared metadata, error %lu\n", err);
+        return err;
+    }else if (metadata_size){
+        *metadata_size = ret_size;
     }
-    return status;
+    return ret;
 }
 
-static NTSTATUS get_shared_info(HANDLE handle,
-                                struct shared_resource_info *info) {
-    IO_STATUS_BLOCK iosb;
-
-    NTSTATUS status = NtDeviceIoControlFile(handle, NULL, NULL, NULL, &iosb,
-                                            IOCTL_SHARED_GPU_RESOURCE_GET_INFO,
-                                            NULL, 0, info, sizeof(*info));
-
-    if (status != STATUS_SUCCESS) {
-        ERR("Failed to get shared info, status %#lx.\n", (long int)status);
+static NTSTATUS get_shared_info(HANDLE handle, struct shared_resource_info *info) {
+    BOOL success = DeviceIoControl(handle, IOCTL_SHARED_GPU_RESOURCE_GET_INFO, NULL, 0, info, sizeof(*info), NULL, NULL);
+    if (!success) {
+        DWORD err = GetLastError();
+        ERR("Failed to get shared info, error %lu\n", err);
+        return err;
     }
-    return status;
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS WINAPI lock_texture(void *args, ULONG size) {
@@ -285,9 +249,7 @@ static struct source_info get_receiver_info(struct receiver *receiver) {
 
     HANDLE share_handle = info.shareHandle;
 
-    TRACE("Sender %s: %dx%d fmt=%d handle=0x%lx usage=0x%x changed=%d\n",
-          receiver->name, info.width, info.height, info.format,
-          (long)(intptr_t)info.shareHandle, info.usage, info.changed);
+    TRACE("Sender %s: %dx%d fmt=%d handle=0x%lx usage=0x%x changed=%d\n", receiver->name, info.width, info.height, info.format, (long)(intptr_t)info.shareHandle, info.usage, info.changed);
 
     ret.width = info.width;
     ret.height = info.height;
@@ -301,7 +263,6 @@ static struct source_info get_receiver_info(struct receiver *receiver) {
 
     int fd;
     NTSTATUS status;
-    IO_STATUS_BLOCK iosb;
     obj_handle_t unix_resource;
     HANDLE memhandle = open_shared_resource(info.shareHandle);
     if (memhandle == INVALID_HANDLE_VALUE) {
@@ -315,11 +276,8 @@ static struct source_info get_receiver_info(struct receiver *receiver) {
 
     Sleep(50);
 
-    if (!SpoutDXToCGetSenderInfo(spout, &info) ||
-        info.shareHandle != share_handle) {
-        WARN("Texture changed out under us, trying again later (0x%lx -> "
-             "0x%lx)\n",
-             HandleToLong(share_handle), HandleToLong(info.shareHandle));
+    if (!SpoutDXToCGetSenderInfo(spout, &info) || info.shareHandle != share_handle) {
+        WARN("Texture changed out under us, trying again later (0x%lx -> 0x%lx)\n",HandleToLong(share_handle), HandleToLong(info.shareHandle));
         ret.flags |= RECEIVER_TEXTURE_INVALID;
         NtClose(memhandle);
         return ret;
@@ -341,15 +299,13 @@ static struct source_info get_receiver_info(struct receiver *receiver) {
     uint32_t ret_size;
     struct DxvkSharedTextureMetadata metadata;
 
-    if (get_shared_metadata(memhandle, &metadata, sizeof(metadata),
-                            &ret_size) != STATUS_SUCCESS) {
+    if (!get_shared_metadata(memhandle, &metadata, sizeof(metadata), &ret_size)) {
         TRACE("-> metadata failed\n");
         goto no_metadata;
     }
 
     if (ret_size != sizeof(metadata)) {
-        ERR("Metadata size mismatch, expected 0x%x, got 0x%x\n",
-            (int)sizeof(metadata), ret_size);
+        ERR("Metadata size mismatch, expected 0x%x, got 0x%x\n", (int)sizeof(metadata), ret_size);
         goto no_metadata;
     }
 
@@ -359,8 +315,7 @@ static struct source_info get_receiver_info(struct receiver *receiver) {
     TRACE("MipLevels      = %d\n", metadata.MipLevels);
     TRACE("ArraySize      = %d\n", metadata.ArraySize);
     TRACE("Format         = %d\n", metadata.Format);
-    TRACE("SampleDesc     = %d, %d\n", metadata.SampleDesc.Count,
-          metadata.SampleDesc.Quality);
+    TRACE("SampleDesc     = %d, %d\n", metadata.SampleDesc.Count, metadata.SampleDesc.Quality);
     TRACE("Usage          = %d\n", metadata.Usage);
     TRACE("BindFlags      = 0x%x\n", metadata.BindFlags);
     TRACE("CPUAccessFlags = 0x%x\n", metadata.CPUAccessFlags);
@@ -386,23 +341,18 @@ no_metadata:
         goto no_resource_size;
     }
 
-    TRACE("Resource Size  = 0x%llx\n",
-          (long long)shared_resource_info.resource_size);
-
+    TRACE("Resource Size  = 0x%llx\n", (long long)shared_resource_info.resource_size);
     ret.resource_size = shared_resource_info.resource_size;
 
 no_resource_size:
-    if (NtDeviceIoControlFile(memhandle, NULL, NULL, NULL, &iosb,
-                              IOCTL_SHARED_GPU_RESOURCE_GET_UNIX_RESOURCE, NULL,
-                              0, &unix_resource, sizeof(unix_resource))) {
+    if (!DeviceIoControl(memhandle,IOCTL_SHARED_GPU_RESOURCE_GET_UNIX_RESOURCE,NULL, 0, &unix_resource, sizeof(unix_resource),NULL,NULL)) {
         ret.flags |= RECEIVER_TEXTURE_INVALID;
         TRACE("-> kmt handle failed\n");
         NtClose(memhandle);
         return ret;
     }
 
-    status = wine_server_handle_to_fd(wine_server_ptr_handle(unix_resource),
-                                      GENERIC_ALL, &fd, NULL);
+    status = wine_server_handle_to_fd(wine_server_ptr_handle(unix_resource),GENERIC_ALL, &fd, NULL);
     NtClose(wine_server_ptr_handle(unix_resource));
     NtClose(memhandle);
     if (status != STATUS_SUCCESS) {
@@ -434,19 +384,16 @@ static void update_receiver(struct receiver *receiver) {
             NTSTATUS ret = UNIX_CALL(create_source, &params);
             receiver->source = params.ret_source;
             if (receiver->source) {
-                receiver->thread =
-                    CreateThread(NULL, 0, receiver_thread, receiver, 0, 0);
+                receiver->thread = CreateThread(NULL, 0, receiver_thread, receiver, 0, 0);
             } else {
-                TRACE("Source creation failed: 0x%lx %s\n", ret,
-                      params.error_msg);
+                TRACE("Source creation failed: 0x%lx %s\n", ret, params.error_msg);
                 show_error(ret, params.error_msg);
             }
         }
         return;
     }
 
-    if (new_info.flags != receiver->info.flags ||
-        (new_info.flags & RECEIVER_TEXTURE_UPDATED)) {
+    if (new_info.flags != receiver->info.flags || (new_info.flags & RECEIVER_TEXTURE_UPDATED)) {
         struct update_source_params params = {
             .source = receiver->source,
             .info = new_info,
@@ -506,8 +453,7 @@ static void remove_receiver(struct receiver *receiver) {
 
     for (uint32_t i = 0; i < num_receivers; i++) {
         if (receivers[i] == receiver) {
-            memmove(&receivers[i], &receivers[i + 1],
-                    sizeof(struct receiver) * (num_receivers - i - 1));
+            memmove(&receivers[i], &receivers[i + 1], sizeof(struct receiver) * (num_receivers - i - 1));
             num_receivers--;
             goto free;
         }
@@ -529,8 +475,7 @@ static DWORD WINAPI sendernames_thread(void *arg) {
         SPOUTDXTOC_NAMELIST added = {0};
         SPOUTDXTOC_NAMELIST removed = {0};
 
-        if (!SpoutDXToCGetSenderList(spout_names, &list, &new_list, &added,
-                                     &removed)) {
+        if (!SpoutDXToCGetSenderList(spout_names, &list, &new_list, &added, &removed)) {
             SpoutDXToCNamelistClear(&new_list);
             update_receivers();
             continue;
@@ -568,8 +513,7 @@ static DWORD WINAPI sendernames_thread(void *arg) {
     return STATUS_SUCCESS;
 }
 
-static DWORD WINAPI service_handler(DWORD ctrl, DWORD event_type,
-                                    LPVOID event_data, LPVOID context) {
+static DWORD WINAPI service_handler(DWORD ctrl, DWORD event_type, LPVOID event_data, LPVOID context) {
     switch (ctrl) {
     case SERVICE_CONTROL_STOP:
     case SERVICE_CONTROL_SHUTDOWN:
@@ -605,8 +549,7 @@ static void WINAPI ServiceMain(DWORD argc, LPWSTR *argv) {
     NTSTATUS ret;
     const char *msg = NULL;
 
-    service_handle =
-        RegisterServiceCtrlHandlerExW(spout2pwW, service_handler, NULL);
+    service_handle = RegisterServiceCtrlHandlerExW(spout2pwW, service_handler, NULL);
     if (!service_handle)
         return;
 
@@ -662,8 +605,7 @@ restart:
     TRACE("Sendernames thread created\n");
 
     service_status.dwCurrentState = SERVICE_RUNNING;
-    service_status.dwControlsAccepted =
-        SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+    service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
     service_status.dwCheckPoint = 0;
     service_status.dwWaitHint = 0;
     SetServiceStatus(service_handle, &service_status);
@@ -704,10 +646,10 @@ stop:
     TRACE("Service stopped\n");
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                   LPSTR lpCmdLine, int nCmdShow) {
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     static const SERVICE_TABLE_ENTRYW service_table[] = {
-        {spout2pwW, ServiceMain}, {NULL, NULL}};
+        {spout2pwW, ServiceMain}, {NULL, NULL}
+    };
 
     bool found = false;
     for (int i = 0; i < 100; i++) {
