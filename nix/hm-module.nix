@@ -30,6 +30,16 @@ in
       '';
     };
 
+    installScript = mkOption {
+      type = types.nullOr types.package;
+      default = defaults.spout2pw-install;
+      defaultText = "spout2pw flake's `packages.<system>.spout2pw-install`";
+      description = ''
+        Helper put on PATH as `spout2pw-install`, which seeds a Proton prefix
+        with the fakedll stubs and the Spout2Pw service. Set to null to omit it.
+      '';
+    };
+
     extraLauncherPackages = mkOption {
       type = types.listOf types.package;
       default = [ ];
@@ -59,6 +69,8 @@ in
 
   config = mkIf cfg.enable {
     programs.obs-studio.plugins = mkIf cfg.obs.enable [ cfg.obs.package ];
+
+    home.packages = lib.optional (cfg.installScript != null) cfg.installScript;
 
     # Copy the payload out of the store into $HOME. See `installPath` for why
     # this cannot be a home.file symlink.

@@ -18,14 +18,20 @@
         default = spout2pw;
         spout2pw = pkgs.callPackage ./nix/spout2pw.nix { inherit version; };
         obs-pwvideo = pkgs.callPackage ./nix/obs-pwvideo.nix { };
+        spout2pw-install = pkgs.callPackage ./nix/install-script.nix { inherit spout2pw; };
       });
 
-      apps = forAllSystems (pkgs: {
-        default = {
-          type = "app";
-          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.spout2pw}/bin/spout2pw";
-        };
-      });
+      apps = forAllSystems (pkgs:
+        let packages = self.packages.${pkgs.stdenv.hostPlatform.system}; in {
+          default = {
+            type = "app";
+            program = "${packages.spout2pw}/bin/spout2pw";
+          };
+          install = {
+            type = "app";
+            program = "${packages.spout2pw-install}/bin/spout2pw-install";
+          };
+        });
 
       # For in-tree iteration: `nix develop -c ./build.sh` against the real git
       # submodules, so edits don't need a flake rebuild round-trip.
