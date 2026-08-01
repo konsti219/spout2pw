@@ -1,3 +1,6 @@
 /build/
 /build-pw/
 .cache
+.direnv/
+result
+result-*
