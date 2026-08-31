@@ -2,3 +2,6 @@
 /build-pw/
 /dynbuild/
 .cache
+.direnv/
+result
+result-*

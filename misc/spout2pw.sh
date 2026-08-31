@@ -102,6 +102,7 @@ find_gbm_backends() {
         /lib64
         /usr/lib
         /lib
+        /run/opengl-driver/lib
     "
 
     gbm_backends=
