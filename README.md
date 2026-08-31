@@ -9,6 +9,64 @@
 
 See the [wiki page](https://github.com/hoshinolina/spout2pw/wiki) for installation and usage instructions.
 
+## Installing on NixOS with steam-config-nix
+
+This fork ships the Spout2PW payload, the `obs-pwvideo` receiver, and a Home
+Manager module for declarative installation through
+[steam-config-nix](https://github.com/different-name/steam-config-nix). No
+manual prefix setup or Steam launch-option editing is required.
+
+**1. Add the flake input**
+
+```nix
+inputs = {
+  spout2pw = {
+    url = "github:konsti219/spout2pw";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  steam-config-nix = {
+    url = "github:different-name/steam-config-nix";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+};
+```
+
+**2. Enable Steam on NixOS**
+
+```nix
+programs.steam.enable = true;
+```
+
+**3. Enable both Home Manager modules**
+
+```nix
+imports = [
+  inputs.steam-config-nix.homeModules.default
+  inputs.spout2pw.homeModules.default
+];
+
+programs.steam.config.enable = true;
+
+programs.spout2pw = {
+  enable = true;
+  apps = ["438100"]; # VRChat
+
+  # Off by default. Only needed for apps still on Proton 10 or older.
+  wine10 = false;
+};
+```
+
+The module copies the DLL payload to `$XDG_DATA_HOME/spout2pw`, adds the required
+environment to each listed app, and uses steam-config-nix to place the Wine
+placeholder modules and service registration into each prefix. On NixOS it also
+exposes the system GBM backend and its Nix store dependencies to
+`pressure-vessel` for those apps. If OBS Studio is enabled through Home Manager,
+the `obs-pwvideo` plugin is installed automatically.
+
+After rebuilding, enable Stream Camera → Spout in the app and add a PipeWire
+Video source in OBS.
+
 ## Building
 
 ```bash
